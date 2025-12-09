@@ -45,7 +45,7 @@ def get_arch_and_mode(bin_path):
                     mode = CS_MODE_ARM
     
                 case _:
-                    print("binary can only be 64 or 32 bit")
+                    print("didn't recognise architecture")
                     exit(1)
 
     else:
@@ -54,10 +54,22 @@ def get_arch_and_mode(bin_path):
     return file_format, arch, mode
 
 def get_elf_code(bin_path):
-    pass
+    with open(bin_path, "rb") as f:
+        elf = ELFFile(f)
+        text = elf.get_section_by_name('.text')
+        ops = text.data()
+        addr = text['sh_addr']
+        return ops, addr
+
 
 def get_pe_code(bin_path):
-    pass
+    exe = pefile.PE(bin_path)
+
+    for s in exe.sections:
+        if '.text' in s.Name:
+            code = s.get_data()
+            rva = s.VirtualAddress
+            return code, rva
 
 
 def main():
@@ -67,18 +79,20 @@ def main():
     bin_path = sys.argv[1]
     file_format, arch, mode = get_arch_and_mode(bin_path)
 
+    print(f"file format: {file_format}\narch: {arch}\nmode: {mode}")
+    
     match file_format:
         case "elf":
-            code = get_elf_code(bin_path)
+            code, addr = get_elf_code(bin_path)
         case "pe":
-            code = get_pe_code(bin_path)
+            code, addr = get_pe_code(bin_path)
         case _:
             print("architechture not supported")
             exit(1)
 
-    print(f"file format: {file_format}\narch: {arch}\nmode: {mode}")
     md = Cs(arch, mode)
     md.detail = True
+    
 
 if __name__ == "__main__":
     main()
