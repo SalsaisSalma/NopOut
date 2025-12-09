@@ -66,10 +66,23 @@ def get_pe_code(bin_path):
     exe = pefile.PE(bin_path)
 
     for s in exe.sections:
-        if '.text' in s.Name:
+        if b".text" in s.Name:
             code = s.get_data()
             rva = s.VirtualAddress
             return code, rva
+
+
+def patch_elf(bin_path, md):
+    code, addr = get_elf_code(bin_path)
+    for i in md.disasm(code, addr):
+        print(f"{hex(i.address)}:\t{i.mnemonic}\t{i.op_str}")
+
+
+def patch_pe(bin_path, md):
+    code, addr = get_pe_code(bin_path)
+    for i in md.disasm(code, addr):
+        print(f"{hex(i.address)}:\t{i.mnemonic}\t{i.op_str}")
+
 
 
 def main():
@@ -81,18 +94,22 @@ def main():
 
     print(f"file format: {file_format}\narch: {arch}\nmode: {mode}")
     
+    md = Cs(arch, mode)
+    md.detail = True
+    
+    
+
     match file_format:
         case "elf":
-            code, addr = get_elf_code(bin_path)
+            patch_elf(bin_path, md)
+            
         case "pe":
-            code, addr = get_pe_code(bin_path)
+            patch_pe(bin_path, md)
+            
         case _:
             print("architechture not supported")
             exit(1)
 
-    md = Cs(arch, mode)
-    md.detail = True
     
-
 if __name__ == "__main__":
     main()
