@@ -2,7 +2,7 @@ from capstone import *
 import sys
 from elftools.elf.elffile import ELFFile
 import pefile
-
+from pwn import ELF
 
 def get_arch_and_mode(bin_path):
     with open(bin_path, 'rb') as fp:
@@ -56,9 +56,12 @@ def get_arch_and_mode(bin_path):
 def get_elf_code(bin_path):
     with open(bin_path, "rb") as f:
         elf = ELFFile(f)
-        text = elf.get_section_by_name('.text')
+        text = elf.get_section_by_name('.dynsym')
+        elf = ELF(bin_path)
+        print(hex(elf.plt['ptrace']))
         ops = text.data()
         addr = text['sh_addr']
+        print(elf.plt['ptrace'])
         return ops, addr
 
 
