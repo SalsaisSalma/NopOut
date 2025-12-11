@@ -78,46 +78,85 @@ def get_pe_code(bin_path):
             return code, rva
 
 
+def is_call_ptrace(instr, ptrace):
+    if instr.id == X86_INS_CALL:
+        if instr.operands[0].type == X86_OP_IMM:
+            if instr.operands[0].imm == ptrace:
+                # print(f"ptrace present at {hex(ptrace)}")
+                # print(f"{hex(instr.address)}:\t{instr.mnemonic}\t{instr.op_str}")
+                # call ptrace
+                return True
+
+    # not call ptrace
+    return False
+
+def is_syscall_ptrace(instr):
+    pass
+
+def patch_call_ptrace(instr, elf):
+    if instr.size < 2:
+        # fill with nops
+        patch_bytes = b'\x90' * instr.size
+    else:
+        # xor eax, eax and fill with nops (it also 0s top 32 bit)
+        patch_bytes = b'\x31\xc0' + (b'\x90' * (instr.size - 2))
+    
+    elf.write(instr.address, patch_bytes)
+    return
+
+
+
 def patch_elf(bin_path, md):
     code, addr = get_elf_code(bin_path)
 
     elf = ELF(bin_path)
     # print(hex(elf.plt['ptrace']))
-        
-    try: 
-        # patch call ptrace in .text
-        ptrace = elf.plt['ptrace']
-        for i in md.disasm(code, addr):
-            if i.id == X86_INS_CALL:
-                if i.operands[0].type == X86_OP_IMM:
-                    if i.operands[0].imm == ptrace:
-                        print(f"ptrace present at {hex(ptrace)}")
-                        print(f"{hex(i.address)}:\t{i.mnemonic}\t{i.op_str}")
-    
-    except:
-        #TODO test
-        prev = None
-        for i in md.disasm(code, addr):
-            if i.id == X86_INS_SYSCALL:
-                if prev.id == X86_INS_MOV:
-                    if len(prev.operands) == 2:
-                        if prev.operands[0] == X86_REG_RAX and prev.operands[1].type == X86_OP_IMM:
-                            if prev.operands[1].imm == 26:
-                                print(f"syscall 101 found at {hex(prev.address)}")
-                                print(f"{hex(prev.address)}:\t{prev.mnemonic}\t{prev.op_str}")
-                                print(f"{hex(i.address)}:\t{i.mnemonic}\t{i.op_str}")
-                
-            if i.id == X86_INS_INT:
-                if prev.id == X86_INS_MOV:
-                    if len(prev.operands) == 2:
-                        if prev.operands[0] == X86_REG_EAX and prev.operands[1].type == X86_OP_IMM:
-                            if prev.operands[1].imm == 101:
-                                print(f"syscall 101 found at {hex(prev.address)}")
-                                print(f"{hex(prev.address)}:\t{prev.mnemonic}\t{prev.op_str}")
-                                print(f"{hex(i.address)}:\t{i.mnemonic}\t{i.op_str}")
 
-            prev = i
+    ptrace_plt = None
+    try:
+        ptrace_plt = elf.plt['ptrace'] # plt ptrace addr 
+    except:
+        ptrace_plt = None
+
+    if ptrace_plt != None: 
+        ''' patch call ptrace in .text '''
+        
+        cnt = 0
+        for i in md.disasm(code, addr):
+            if is_call_ptrace(i, ptrace_plt):
+                patch_call_ptrace(i, elf)
+                cnt += 1 # increase number of ptrace patched
+        
+        print(f"Found {cnt} ptrace")
+
+    output_name = bin_path + "_patched"
+    elf.save(output_name)
+    print(f"Saved patched binary to {output_name}")
     
+    '''
+    #TODO test
+    prev = None
+    for i in md.disasm(code, addr):
+        if i.id == X86_INS_SYSCALL:
+            if prev.id == X86_INS_MOV:
+                if len(prev.operands) == 2:
+                    if prev.operands[0] == X86_REG_RAX and prev.operands[1].type == X86_OP_IMM:
+                        if prev.operands[1].imm == 101:
+                            print(f"syscall 101 found at {hex(prev.address)}")
+                            print(f"{hex(prev.address)}:\t{prev.mnemonic}\t{prev.op_str}")
+                            print(f"{hex(i.address)}:\t{i.mnemonic}\t{i.op_str}")
+                
+        if i.id == X86_INS_INT:
+            if prev.id == X86_INS_MOV:
+                if len(prev.operands) == 2:
+                    if prev.operands[0] == X86_REG_EAX and prev.operands[1].type == X86_OP_IMM:
+                        if prev.operands[1].imm == 26:
+                            print(f"syscall 101 found at {hex(prev.address)}")
+                            print(f"{hex(prev.address)}:\t{prev.mnemonic}\t{prev.op_str}")
+                            print(f"{hex(i.address)}:\t{i.mnemonic}\t{i.op_str}")
+
+        prev = i
+    '''
     
 
 
