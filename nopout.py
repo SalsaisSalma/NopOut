@@ -95,11 +95,28 @@ def patch_elf(bin_path, md):
                         print(f"{hex(i.address)}:\t{i.mnemonic}\t{i.op_str}")
     
     except:
+        #TODO test
+        prev = None
         for i in md.disasm(code, addr):
             if i.id == X86_INS_SYSCALL:
-                pass
+                if prev.id == X86_INS_MOV:
+                    if len(prev.operands) == 2:
+                        if prev.operands[0] == X86_REG_RAX and prev.operands[1].type == X86_OP_IMM:
+                            if prev.operands[1].imm == 26:
+                                print(f"syscall 101 found at {hex(prev.address)}")
+                                print(f"{hex(prev.address)}:\t{prev.mnemonic}\t{prev.op_str}")
+                                print(f"{hex(i.address)}:\t{i.mnemonic}\t{i.op_str}")
+                
             if i.id == X86_INS_INT:
-                pass 
+                if prev.id == X86_INS_MOV:
+                    if len(prev.operands) == 2:
+                        if prev.operands[0] == X86_REG_EAX and prev.operands[1].type == X86_OP_IMM:
+                            if prev.operands[1].imm == 101:
+                                print(f"syscall 101 found at {hex(prev.address)}")
+                                print(f"{hex(prev.address)}:\t{prev.mnemonic}\t{prev.op_str}")
+                                print(f"{hex(i.address)}:\t{i.mnemonic}\t{i.op_str}")
+
+            prev = i
     
     
 
