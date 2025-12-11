@@ -1,4 +1,5 @@
 from capstone import *
+from capstone.x86 import *
 import sys
 from elftools.elf.elffile import ELFFile
 import pefile
@@ -14,9 +15,11 @@ def get_arch_and_mode(bin_path):
         if pe.FILE_HEADER.Machine == 0x8664: # amd64 (64 bit)
             arch = CS_ARCH_X86
             mode = CS_MODE_64
+            print("PE x86_64")
         elif pe.FILE_HEADER.Machine == 0x014c: # i386 (32 bit)
             arch = CS_ARCH_X86
             mode = CS_MODE_32
+            print("PE x86_32")
         else:
             print("not a valid pe header")
             exit(1)
@@ -31,11 +34,12 @@ def get_arch_and_mode(bin_path):
                 case 'EM_X86_64':
                     arch = CS_ARCH_X86
                     mode = CS_MODE_64
-                
+                    print("ELF x86_64")
                 case 'EM_386': 
                     arch = CS_ARCH_X86
                     mode = CS_MODE_32
-                
+                    print("ELF x86_32")
+                    '''
                 case 'EM_ARM': # arm 32 bit
                     arch = CS_ARCH_ARM
                     mode = CS_MODE_ARM
@@ -43,7 +47,7 @@ def get_arch_and_mode(bin_path):
                 case 'EM_AARCH64': # arm 64 bit
                     arch = CS_ARCH_ARM64
                     mode = CS_MODE_ARM
-    
+                    '''
                 case _:
                     print("didn't recognise architecture")
                     exit(1)
@@ -56,12 +60,11 @@ def get_arch_and_mode(bin_path):
 def get_elf_code(bin_path):
     with open(bin_path, "rb") as f:
         elf = ELFFile(f)
-        text = elf.get_section_by_name('.dynsym')
-        elf = ELF(bin_path)
-        print(hex(elf.plt['ptrace']))
+        text = elf.get_section_by_name('.text')
+        
         ops = text.data()
         addr = text['sh_addr']
-        print(elf.plt['ptrace'])
+        
         return ops, addr
 
 
@@ -77,8 +80,28 @@ def get_pe_code(bin_path):
 
 def patch_elf(bin_path, md):
     code, addr = get_elf_code(bin_path)
-    for i in md.disasm(code, addr):
-        print(f"{hex(i.address)}:\t{i.mnemonic}\t{i.op_str}")
+
+    elf = ELF(bin_path)
+    # print(hex(elf.plt['ptrace']))
+        
+    try: 
+        # patch call ptrace in .text
+        ptrace = elf.plt['ptrace']
+        for i in md.disasm(code, addr):
+            if i.id == X86_INS_CALL:
+                if i.operands[0].type == X86_OP_IMM:
+                    if i.operands[0].imm == ptrace:
+                        print(f"ptrace present at {hex(ptrace)}")
+                        print(f"{hex(i.address)}:\t{i.mnemonic}\t{i.op_str}")
+    
+    except:
+        for i in md.disasm(code, addr):
+            if i.id == X86_INS_SYSCALL:
+                pass
+            if i.id == X86_INS_INT:
+                pass 
+    
+    
 
 
 def patch_pe(bin_path, md):
