@@ -149,16 +149,15 @@ def patch_elf(bin_path, md):
     except:
         ptrace_plt = None
 
+    cnt = 0
     if ptrace_plt != None: 
-        ''' patch call ptrace in .text '''
-        
-        cnt = 0
+        print("ptrace found in plt")
+        ''' patch call ptrace in .text '''    
         for i in md.disasm(code, addr):
             if is_call_ptrace(i, ptrace_plt):
                 patch_ptrace(i, elf)
                 cnt += 1 # increase number of ptrace patched
         
-        print(f"Found {cnt} ptrace")
     
 
     #TODO test
@@ -167,11 +166,16 @@ def patch_elf(bin_path, md):
     for i in md.disasm(code, addr):
         if is_syscall_ptrace(i, prev):
             patch_ptrace(i, elf)
+            cnt += 1
         prev = i
     
-    output_name = bin_path + "_patched"
-    elf.save(output_name)
-    print(f"Saved patched binary to {output_name}")
+    if cnt > 0:
+        print(f"Found {cnt} ptrace")
+        output_name = bin_path + "_patched"
+        elf.save(output_name)
+        print(f"Saved patched binary to {output_name}")
+    else:
+        print("no ptrace found")
     
 
 
