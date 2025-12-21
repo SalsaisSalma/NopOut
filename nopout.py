@@ -72,12 +72,13 @@ def get_elf_code(bin_path):
 
 def get_pe_code(bin_path):
     exe = pefile.PE(bin_path)
+    image_base = exe.OPTIONAL_HEADER.ImageBase
 
     for s in exe.sections:
         if b".text" in s.Name:
             code = s.get_data()
-            rva = s.VirtualAddress
-            return code, rva
+            addr = image_base + s.VirtualAddress
+            return code, addr
 
 
 def is_call_ptrace(instr, ptrace):
@@ -157,8 +158,7 @@ def patch_elf(bin_path, md):
             if is_call_ptrace(i, ptrace_plt):
                 patch_ptrace(i, elf)
                 cnt += 1 # increase number of ptrace patched
-        
-    
+                
 
     #TODO test
     ''' check for syscall ptrace '''
@@ -176,14 +176,60 @@ def patch_elf(bin_path, md):
         print(f"Saved patched binary to {output_name}")
     else:
         print("no ptrace found")
-    
 
+def get_iat_addr(pe, func_name):
+    
+    # finds the address in the Import Address Table (IAT) for a specific function.
+    
+    if not hasattr(pe, 'DIRECTORY_ENTRY_IMPORT'):
+        return None
+
+    for entry in pe.DIRECTORY_ENTRY_IMPORT:
+        for imp in entry.imports:
+            if imp.name and imp.name.decode('utf-8') == func_name:
+                return imp.address
+    return None
+  
+def is_call_idp(instr, idp_addr):
+    if instr.id == X86_INS_CALL:
+        # Windows API calls are usually indirect calls to memory: CALL [0x402000]
+        if instr.operands[0].type == X86_OP_MEM:
+            if instr.operands[0].mem.disp == idp_addr:
+                return True
+
+    # not call idp
+    return False
+
+def patch_idp(instr, pe): 
+    patch_bytes = b'\x31\xc0' + (b'\x90' * (instr.size - 2))
+    
+    # PEFile requires file offset, not Virtual Address
+    rva = instr.address - pe.OPTIONAL_HEADER.ImageBase
+    offset = pe.get_offset_from_rva(rva)
+    
+    pe.set_bytes_at_offset(offset, patch_bytes)
+    return
 
 def patch_pe(bin_path, md):
     code, addr = get_pe_code(bin_path)
-    for i in md.disasm(code, addr):
-        print(f"{hex(i.address)}:\t{i.mnemonic}\t{i.op_str}")
+    pe = pefile.PE(bin_path)
+    
+    idp_addr = get_iat_addr(pe, "IsDebuggerPresent")
+    cnt = 0 
+    if idp_addr is not None:
+        print(f"IsDebuggerPresent found at {hex(idp_addr)}")
+        for i in md.disasm(code, addr):
+            if is_call_idp(i, idp_addr): 
+                patch_idp(i, pe)
+                cnt += 1 
 
+    if cnt > 0:
+        print(f"Found {cnt} IsDebuggerPresent calls")
+        output_name = bin_path + "_patched.exe"
+        pe.write(output_name)
+        print(f"Saved patched binary to {output_name}")
+    else:
+        print("No IsDebuggerPresent calls found")
 
 
 def main():
